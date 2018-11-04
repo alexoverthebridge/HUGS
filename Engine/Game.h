@@ -31,9 +31,41 @@
 #include "Viewport.h"
 #include "Ship.h"
 #include "Map.h"
+#include "ShieldMeter.h"
+#include "Observer.h"
+#include "BlackHole.h"
 
 class Game
 {
+private:
+	class LapListener : public Observer
+	{
+	public:
+		virtual void OnNotify() override
+		{
+			count++;
+		}
+		int GetLapCount() const
+		{
+			return count;
+		}
+	private:
+		int count = 0;
+	} lapListener;
+	class DeathListener : public Observer
+	{
+	public:
+		virtual void OnNotify() override
+		{
+			isDead = true;
+		}
+		bool IsDead() const
+		{
+			return isDead;
+		}
+	private:
+		bool isDead = false;
+	} deathListener;
 public:
 	Game( HWND hWnd,KeyboardServer& kServer,MouseServer& mServer );
 	~Game();
@@ -58,7 +90,9 @@ private:
 	Timer timer;
 	Viewport port;
 	Camera cam;
-	Ship ship;
 	Map map;
+	Ship ship;
+	ShieldMeter meter;
+	Font timesFont;
 	/********************************/
 };

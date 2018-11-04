@@ -1,11 +1,14 @@
 #pragma once
 #include "PolyClosed.h"
 #include "Camera.h"
-#include "CollidableCircle.h"
+#include "PhysicalCircle.h"
 #include <array>
 #include "Vertex.h"
+#include "Observer.h"
+#include "TrackRegionManager.h"
+#include "TexturedQuad.h"
 
-class Ship : public CollidableCircle
+class Ship : public PhysicalCircle, public Observable
 {
 public:
 	class Drawable : public ::Drawable
@@ -19,50 +22,90 @@ public:
 		}
 		virtual void Rasterize( D3DGraphics& gfx ) const override
 		{
-			std::array<Vertex, 4 > quadTrans;
-			const Mat3 shipTrans = trans * Mat3::Translation( -parent.shipCenter )
-				* Mat3::Scaling( parent.shipScale );
-			for (int i = 0; i < 4; i++)
-			{
-				quadTrans[i].t = parent.quad[i].t;
-				quadTrans[i].v = shipTrans * parent.quad[i].v;
-			}
-
-			gfx.DrawTriangleTex(quadTrans[0], quadTrans[1], quadTrans[3], clip, 
-				parent.shipTexture);
-			gfx.DrawTriangleTex(quadTrans[1], quadTrans[2], quadTrans[3], clip,
-				parent.shipTexture);
+			auto shipQuad = parent.shipQuad.GetDrawable();
+			shipQuad.Transform( trans );
+			shipQuad.Clip( clip );
+			shipQuad.Rasterize( gfx );
 
 			const Vec2 shieldCenter = trans * Vec2 { 0.0f,0.0f };
-			gfx.DrawCircle( shieldCenter,parent.shieldRadius,parent.shieldColor );
+			gfx.DrawCircle( shieldCenter,(int)parent.radius,parent.shieldColor );
 		}
 	private:
 		const Ship& parent;
 	};
-public:
-	Ship( std::string filename,Vec2 pos = { 0.0f,0.0f } )
-		:
-		pos( pos ),
-		shipTexture( Surface::FromFile( L"USS Turgidity.png" ) )
+private:
+	class TrackSequencer : public Observable
 	{
-		quad[0].v = { -80,-135.0f };
-		quad[0].t = { 0.0f,0.0f };
-		quad[1].v = { 79,-135.0f };
-		quad[1].t = { 159.0f,0.0f };
-		quad[2].v = { 79,134.0f };
-		quad[2].t = { 159.0f,269.0f };
-		quad[3].v = { -80,134.0f };
-		quad[3].t = { 0.0f,269.0f };
-	}
+	public:
+		TrackSequencer( const TrackRegionManager& tMan )
+			:
+			startRegion(tMan.GetStart()),
+			endRegion(tMan.GetEnd()),
+			curRegion(tMan.GetStart())
+		{}
+		void HitRegion( unsigned int uid )
+		{
+			if( uid == curRegion->GetID() );
+			else if( uid == GetNextRegion()->GetID() )
+			{
+				if( uid == startRegion->GetID() && !isWrong )
+				{
+					Notify();
+				}
+				isWrong = false;
+				curRegion = GetNextRegion();
+			}
+			else if( !isWrong )
+			{
+				isWrong = true;
+				curRegion = GetPrevRegion();
+			}
+		}
+	private:
+		std::set< TrackRegion >::const_iterator GetNextRegion() const
+		{
+			if( std::next( curRegion ) == endRegion )
+			{
+				return startRegion;
+			}
+			else
+			{
+				return std::next( curRegion );
+			}
+		}
+		std::set< TrackRegion >::const_iterator GetPrevRegion() const
+		{
+			if( curRegion == startRegion )
+			{
+				return std::prev( endRegion );
+			}
+			else
+			{
+				return std::prev( curRegion );
+			}
+		}
+	private:
+		bool isWrong = false;
+		std::set< TrackRegion >::const_iterator curRegion;
+		const std::set< TrackRegion >::const_iterator startRegion;
+		const std::set< TrackRegion >::const_iterator endRegion;
+	};
+public:
+	Ship( const std::wstring& filename,const TrackRegionManager& tMan,Vec2 pos = { 0.0f,0.0f } )
+		:
+		PhysicalCircle( 50.0f,1.0f,0.001f,pos ),
+		seq( tMan ),
+		shipQuad( filename,0.27f,{ 0.0f,6.0f } )
+	{}
 	Drawable GetDrawable() const
 	{
 		return Drawable( *this );
 	}
-	void Update( float dt )
+	virtual void Update( float dt ) override
 	{
 		// angular (1st order then 0th order)
 		// deccel faster than accel
-		if( angAccelDir == 0.0f )
+   		if( angAccelDir == 0.0f )
 		{
 			if( abs( angVel ) <= angAccel * dt )
 			{
@@ -82,26 +125,34 @@ public:
 		// clamp angle to within 2pi
 		angle = fmodf( angle,2.0f * PI );
 
-		// linear (1st order then 0th order)
-		vel += Vec2 { 0.0f,-1.0f }.Rotation( angle ) * accel * thrust * dt;
-		if( vel.LenSq() > sq( maxSpeed ) )
+		// thrust force
+		if( thrusting )
 		{
-			vel *= maxSpeed / vel.Len();
+			ApplyForce( Vec2 { 0.0f,-1.0f }.Rotation( angle ) * thrustForce );
 		}
-		pos += vel * dt;
+
+		PhysicalCircle::Update( dt );
 	}
 	void FocusOn( Camera& cam ) const
 	{
 		cam.MoveTo( pos );
 	}
+	float GetShieldPercent() const
+	{
+		return shieldLevel;
+	}
+	void RegisterLapObserver( Observer& lapObs )
+	{
+		seq.AddObserver( lapObs );
+	}
 	// control functions
 	void Thrust()
 	{
-		thrust = 1.0f;
+		thrusting = true;
 	}
 	void StopThrusting()
 	{
-		thrust = 0.0f;
+		thrusting = false;
 	}
 	void Spin( float dir )
 	{
@@ -114,45 +165,39 @@ public:
 			angAccelDir = 0.0f;
 		}
 	}
-	// collidable interface
-	virtual RectF GetAABB() const override
-	{
-		return RectF( pos.y - shieldRadius,pos.y + shieldRadius,
-			pos.x - shieldRadius,pos.x + shieldRadius );
-	}
-	virtual Vec2 GetCenter() const override
-	{
-		return pos;
-	}
-	virtual float GetRadius() const override
-	{
-		return (float)shieldRadius;
-	}
-	virtual Vec2 GetVel() const override
-	{
-		return vel;
-	}
 	virtual void Rebound( Vec2 normal ) override
 	{
-		vel -= normal * ( vel * normal ) * 2.0f;
+		if( shieldLevel > 0.0f )
+		{
+			shieldLevel = max( 0.0f,
+				shieldLevel - ( -vel * normal ) * kDamage );
+		}
+		else
+		{
+			Notify();
+		}
+		PhysicalCircle::Rebound( normal );
+	}
+	void Track( unsigned int uid )
+	{
+		seq.HitRegion( uid );
 	}
 
-
 private:
+	// rules stuff
+	TrackSequencer seq;
+
+	// stats
+	float shieldLevel = 1.0f;
+	const float kDamage = 0.0003f;
+
 	// structural
-	Surface shipTexture;
-	const float shipScale = 0.27f;
-	std::array<Vertex, 4> quad;
-	const Vec2 shipCenter = {0.0f,6.0f};
-	const int shieldRadius = 50;
+	TexturedQuad shipQuad;
 	const Color shieldColor = GREEN;
 
 	// linear
-	Vec2 pos;
-	Vec2 vel = { 0.0f,0.0f };
-	const float accel = 0.2f * 60.0f * 60.0f;
-	const float maxSpeed = 450.0f;
-	float thrust = 0.0f;
+	float thrustForce = 1200.0f;
+	bool thrusting = false;
 
 	// angular
 	float angle = 0.0f;

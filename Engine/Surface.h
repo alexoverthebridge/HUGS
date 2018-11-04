@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Colors.h"
+#include "Font.h"
 #include <gdiplus.h>
 #include <string>
 #include <assert.h>
@@ -30,58 +31,24 @@ public:
 	{
 		const_cast<Color*>( source.buffer ) = nullptr;
 	}
+	Surface( Surface& ) = delete;
+	Surface& operator=( Surface&& donor )
+	{
+		width = donor.width;
+		height = donor.height;
+		pitch = donor.pitch;
+		const_cast<Color*>( buffer ) = donor.buffer;
+		const_cast<Color*>( donor.buffer ) = nullptr;
+		return *this;
+	}
+	Surface& operator=( const Surface& ) = delete;
 	~Surface()
 	{
 		if( buffer != nullptr )
 		{
 			delete[] buffer;
+			const_cast<Color*>( buffer ) = nullptr;
 		}
-	}
-	void Save( const std::wstring filename )
-	{
-		auto GetEncoderClsid = []( const WCHAR* format,CLSID* pClsid ) -> int
-		{
-			UINT  num = 0;          // number of image encoders
-			UINT  size = 0;         // size of the image encoder array in bytes
-
-			Gdiplus::ImageCodecInfo* pImageCodecInfo = NULL;
-
-			Gdiplus::GetImageEncodersSize( &num,&size );
-			if( size == 0 )
-				return -1;  // Failure
-
-			pImageCodecInfo = ( Gdiplus::ImageCodecInfo* )( malloc( size ) );
-			if( pImageCodecInfo == NULL )
-				return -1;  // Failure
-
-			GetImageEncoders( num,size,pImageCodecInfo );
-
-			for( UINT j = 0; j < num; ++j )
-			{
-				if( wcscmp( pImageCodecInfo[j].MimeType,format ) == 0 )
-				{
-					*pClsid = pImageCodecInfo[j].Clsid;
-					free( pImageCodecInfo );
-					return j;  // Success
-				}
-			}
-
-			free( pImageCodecInfo );
-			return -1;  // Failure
-		};
-
-		Gdiplus::GdiplusStartupInput gdiplusStartupInput;
-		ULONG_PTR gdiplusToken;
-		Gdiplus::GdiplusStartup( &gdiplusToken,&gdiplusStartupInput,NULL );
-
-		{
-			Gdiplus::Bitmap bitmap( width,height,pitch * sizeof( Color ),PixelFormat32bppARGB,(BYTE*)buffer );
-			CLSID bmpID;
-			GetEncoderClsid( L"image/bmp",&bmpID );
-			bitmap.Save( filename.c_str(),&bmpID,NULL );
-		}
-
-		Gdiplus::GdiplusShutdown( gdiplusToken );
 	}
 	inline void Clear( Color fillValue  )
 	{
@@ -130,12 +97,8 @@ public:
 	{
 		return buffer;
 	}
-	static Surface FromFile( const std::wstring name )
+	static Surface FromFile( const std::wstring& name )
 	{
-		Gdiplus::GdiplusStartupInput gdiplusStartupInput;
-		ULONG_PTR gdiplusToken;
-		Gdiplus::GdiplusStartup( &gdiplusToken,&gdiplusStartupInput,NULL );
-
 		unsigned int width = 0;
 		unsigned int height = 0;
 		unsigned int pitch = 0;
@@ -158,8 +121,47 @@ public:
 			}
 		}
 
-		Gdiplus::GdiplusShutdown( gdiplusToken );
 		return Surface( width,height,pitch,buffer );
+	}
+	void Save( const std::wstring& filename ) const
+	{
+		auto GetEncoderClsid = []( const WCHAR* format,CLSID* pClsid ) -> int
+		{
+			UINT  num = 0;          // number of image encoders
+			UINT  size = 0;         // size of the image encoder array in bytes
+
+			Gdiplus::ImageCodecInfo* pImageCodecInfo = NULL;
+
+			Gdiplus::GetImageEncodersSize( &num,&size );
+			if( size == 0 )
+				return -1;  // Failure
+
+			pImageCodecInfo = ( Gdiplus::ImageCodecInfo* )( malloc( size ) );
+			if( pImageCodecInfo == NULL )
+				return -1;  // Failure
+
+			GetImageEncoders( num,size,pImageCodecInfo );
+
+			for( UINT j = 0; j < num; ++j )
+			{
+				if( wcscmp( pImageCodecInfo[j].MimeType,format ) == 0 )
+				{
+					*pClsid = pImageCodecInfo[j].Clsid;
+					free( pImageCodecInfo );
+					return j;  // Success
+				}
+			}
+
+			free( pImageCodecInfo );
+			return -1;  // Failure
+		};
+
+		{
+			Gdiplus::Bitmap bitmap( width,height,pitch * sizeof( Color ),PixelFormat32bppARGB,(BYTE*)buffer );
+			CLSID bmpID;
+			GetEncoderClsid( L"image/bmp",&bmpID );
+			bitmap.Save( filename.c_str(),&bmpID,NULL );
+		}
 	}
 private:
 	static unsigned int GetPitch( unsigned int width,unsigned int byteAlignment )
@@ -175,9 +177,59 @@ private:
 		buffer( buffer ),
 		pitch( pitch )
 	{}
-private:
+protected:
 	Color* const buffer;
-	const unsigned int width;
-	const unsigned int height;
-	const unsigned int pitch;
+	unsigned int width;
+	unsigned int height;
+	unsigned int pitch;
+};
+
+class TextSurface : public Surface
+{
+public:
+	TextSurface( unsigned int width,unsigned int height )
+		:
+		Surface( width,height ),
+		bitmap( width,height,pitch * sizeof( Color ),
+		PixelFormat32bppARGB,(byte*)buffer ),
+		g( &bitmap )
+	{}
+	void DrawString( const std::wstring& string,Vec2 pt,const Font& font,Color c )
+	{
+		Gdiplus::Color textColor( c.r,c.g,c.b );
+		Gdiplus::SolidBrush textBrush( textColor );
+		g.DrawString( string.c_str(),-1,font,
+			Gdiplus::PointF( pt.x,pt.y ),&textBrush );
+	}
+	void DrawString( const std::wstring& string,const RectF& rect,const Font& font,
+		Color c = WHITE,Font::Alignment a = Font::Center )
+	{
+		Gdiplus::StringFormat format;
+		switch( a )
+		{
+		case Font::Left:
+			format.SetAlignment( Gdiplus::StringAlignmentNear );
+			break;
+		case Font::Right:
+			format.SetAlignment( Gdiplus::StringAlignmentFar );
+			break;
+		case Font::Center:
+		default:
+			format.SetAlignment( Gdiplus::StringAlignmentCenter );
+			break;
+		}
+		Gdiplus::Color textColor( c.r,c.g,c.b );
+		Gdiplus::SolidBrush textBrush( textColor );
+		g.DrawString( string.c_str(),-1,font,
+			Gdiplus::RectF( rect.left,rect.top,rect.GetWidth(),rect.GetHeight() ),
+			&format,
+			&textBrush );
+	}
+	TextSurface( const TextSurface& ) = delete;
+	TextSurface( TextSurface&& ) = delete;
+	TextSurface& operator=( const TextSurface& ) = delete;
+	TextSurface& operator=( TextSurface&& ) = delete;
+private:
+	Gdiplus::Bitmap	bitmap;
+	Gdiplus::Graphics g;
 };

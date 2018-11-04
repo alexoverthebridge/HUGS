@@ -84,6 +84,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="BlackHole.h" />
     <ClInclude Include="ChiliMath.h" />
     <ClInclude Include="CollidableCircle.h" />
     <ClInclude Include="Colors.h" />
@@ -100,19 +101,28 @@
     <ClInclude Include="dxflib\dl_extrusion.h" />
     <ClInclude Include="dxflib\dl_writer.h" />
     <ClInclude Include="dxflib\dl_writer_ascii.h" />
+    <ClInclude Include="Font.h" />
     <ClInclude Include="FrameTimer.h" />
     <ClInclude Include="Game.h" />
+    <ClInclude Include="GdiPlusManager.h" />
     <ClInclude Include="Keyboard.h" />
     <ClInclude Include="Map.h" />
     <ClInclude Include="Mat3.h" />
     <ClInclude Include="Mouse.h" />
+    <ClInclude Include="Observer.h" />
+    <ClInclude Include="PhysicalCircle.h" />
     <ClInclude Include="PolyClosed.h" />
+    <ClInclude Include="PolyClosedRebounding.h" />
     <ClInclude Include="Rect.h" />
     <ClInclude Include="Resource.h" />
+    <ClInclude Include="ShieldMeter.h" />
     <ClInclude Include="Ship.h" />
     <ClInclude Include="Sound.h" />
     <ClInclude Include="Surface.h" />
+    <ClInclude Include="TexturedQuad.h" />
     <ClInclude Include="Timer.h" />
+    <ClInclude Include="TrackRegion.h" />
+    <ClInclude Include="TrackRegionManager.h" />
     <ClInclude Include="TriangleStrip.h" />
     <ClInclude Include="Vec2.h" />
     <ClInclude Include="Camera.h" />
@@ -120,6 +130,7 @@
     <ClInclude Include="Viewport.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="CollidableCircle.cpp" />
     <ClCompile Include="D3DGraphics.cpp" />
     <ClCompile Include="dxflib\dl_dxf.cpp" />
     <ClCompile Include="dxflib\dl_writer_ascii.cpp" />
@@ -128,14 +139,25 @@
       <BufferSecurityCheck Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</BufferSecurityCheck>
       <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
     </ClCompile>
+    <ClCompile Include="GdiPlusManager.cpp" />
     <ClCompile Include="Keyboard.cpp" />
     <ClCompile Include="Mouse.cpp" />
     <ClCompile Include="Sound.cpp" />
     <ClCompile Include="Timer.cpp" />
+    <ClCompile Include="TrackRegion.cpp" />
     <ClCompile Include="Windows.cpp" />
   </ItemGroup>
   <ItemGroup>
     <Resource Include="ChiliDirectXFramework.res" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="bhole.png" />
+    <Image Include="USS Turgidity.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="MapInOut.dxf" />
+    <None Include="shiptry.dxf" />
+    <None Include="tracktest.dxf" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
